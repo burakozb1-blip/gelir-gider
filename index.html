@@ -153,6 +153,10 @@
   .authbox h1{text-align:center;margin-bottom:4px}
   .authbox .lead{text-align:center;color:var(--muted);margin:0 0 18px}
   .authbox .btn{margin-top:10px}
+  .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--card);border:1px solid var(--line);margin-top:0!important}
+  .gbtn .g{font-weight:800;font-size:18px;color:var(--accent)}
+  .or{display:flex;align-items:center;gap:10px;margin:16px 0 4px;color:var(--muted);font-size:13px}
+  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
   .linkbtn{background:none!important;color:var(--accent)}
   .err{color:var(--red);font-size:14px;min-height:20px;margin-top:8px}
   .setup ol{padding-left:20px;margin:8px 0} .setup li{margin-bottom:6px}
@@ -181,6 +185,8 @@
       </ol>
     </div>
     <div id="auth-form" class="card hidden">
+      <button class="btn block gbtn" id="a-google"><span class="g">G</span> Google ile giriş yap</button>
+      <div class="or"><span>veya e-posta ile</span></div>
       <label class="f" for="a-email">E-posta</label>
       <input class="in" id="a-email" type="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
       <label class="f" for="a-pass">Şifre</label>
@@ -433,10 +439,15 @@ function authMsg(code){
     'auth/admin-restricted-operation':'Yeni hesap açma kapalı.',
     'auth/operation-not-allowed':'Firebase\'de E-posta/Şifre girişi açık değil.',
     'auth/unauthorized-domain':'Bu site adresi Firebase\'de yetkili alan adlarına eklenmemiş.',
+    'auth/popup-closed-by-user':'Google penceresi kapatıldı. Tekrar dene.',
+    'auth/cancelled-popup-request':'',
+    'auth/popup-blocked':'Tarayıcı Google penceresini engelledi.',
+    'auth/account-exists-with-different-credential':'Bu e-posta başka bir giriş yöntemiyle kayıtlı.',
+    'auth/web-storage-unsupported':'Tarayıcı ayarları girişe izin vermiyor (çerezler kapalı olabilir).',
     'permission-denied':'Firestore kuralları erişime izin vermiyor.',
     'unavailable':'Sunucuya ulaşılamıyor; değişiklikler bağlantı gelince gönderilecek.'
   };
-  return m[code] || ('Hata: '+code);
+  return (code in m) ? m[code] : ('Hata: '+code);
 }
 function cloudErr(e){ console.error(e); toast(authMsg(e && e.code || String(e))); }
 function entryRef(id){ return F.doc(fs,'users',user.uid,'entries',id); }
@@ -503,6 +514,7 @@ function initFirebase(){
     try{
       fs = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})});
     }catch(e){ fs = F.getFirestore(app); }
+    F.getRedirectResult(auth).catch(function(e){ authView('auth-form'); $('a-err').textContent = authMsg(e.code); });
     F.onAuthStateChanged(auth, function(u){
       user = u;
       if(u){
@@ -531,6 +543,17 @@ function authDo(kind){
       .catch(function(e){ $('a-err').textContent = authMsg(e.code); });
     return;
   }
+  if(kind==='google'){
+    var prov = new F.GoogleAuthProvider();
+    prov.setCustomParameters({prompt:'select_account'});
+    F.signInWithPopup(auth, prov).catch(function(e){
+      if(e.code==='auth/popup-blocked' || e.code==='auth/operation-not-supported-in-this-environment'){
+        return F.signInWithRedirect(auth, prov);
+      }
+      $('a-err').textContent = authMsg(e.code);
+    }).catch(function(e){ $('a-err').textContent = authMsg(e.code); });
+    return;
+  }
   var fn = kind==='signup' ? F.createUserWithEmailAndPassword : F.signInWithEmailAndPassword;
   ['a-login','a-signup'].forEach(function(id){ $(id).disabled = true; });
   fn(auth, email, pass).catch(function(e){ $('a-err').textContent = authMsg(e.code); })
@@ -539,6 +562,7 @@ function authDo(kind){
 $('a-login').onclick = function(){ authDo('login'); };
 $('a-signup').onclick = function(){ authDo('signup'); };
 $('a-reset').onclick = function(){ authDo('reset'); };
+$('a-google').onclick = function(){ authDo('google'); };
 $('a-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') authDo('login'); });
 $('b-logout').onclick = function(){ if(confirm('Çıkış yapılsın mı?')) F.signOut(auth); };
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
